@@ -1,6 +1,7 @@
 GO ?= $(shell command -v go 2> /dev/null)
 NPM ?= $(shell command -v npm 2> /dev/null)
 CURL ?= $(shell command -v curl 2> /dev/null)
+NODE_OPTIONS ?= --openssl-legacy-provider
 MM_DEBUG ?=
 GOPATH ?= $(shell go env GOPATH)
 GO_TEST_FLAGS ?= -race
@@ -11,6 +12,7 @@ DEFAULT_GOOS := $(shell go env GOOS)
 DEFAULT_GOARCH := $(shell go env GOARCH)
 
 export GO111MODULE=on
+export NODE_OPTIONS
 
 # We need to export GOBIN to allow it to be set
 # for processes spawned from the Makefile
