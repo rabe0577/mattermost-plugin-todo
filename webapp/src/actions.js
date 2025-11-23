@@ -1,5 +1,6 @@
 import {Client4} from 'mattermost-redux/client';
 import * as TeamSelector from 'mattermost-redux/selectors/entities/teams';
+import {getCurrentChannelId} from 'mattermost-redux/selectors/entities/channels';
 import * as UserActions from 'mattermost-redux/actions/users';
 
 import {
@@ -119,30 +120,34 @@ export const telemetry = (event, properties) => async (dispatch, getState) => {
 };
 
 export const add = (message, postPermalink, description, sendTo, postID) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/add', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({send_to: sendTo, message, postPermalink, description, post_id: postID}),
+        body: JSON.stringify({send_to: sendTo, message, postPermalink, description, post_id: postID, channel_id: channelId}),
     }));
 };
 
 export const editIssue = (postID, message, description) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/edit', Client4.getOptions({
         method: 'put',
-        body: JSON.stringify({id: postID, message, description}),
+        body: JSON.stringify({id: postID, message, description, channel_id: channelId}),
     }));
 };
 
 export const changeAssignee = (id, assignee) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/change_assignment', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id, send_to: assignee}),
+        body: JSON.stringify({id, send_to: assignee, channel_id: channelId}),
     }));
 };
 
 export const fetchAllIssueLists = (reminder = false) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     let data;
     try {
-        const resp = await fetch(getPluginServerRoute(getState()) + '/lists?reminder=' + reminder, Client4.getOptions({
+        const resp = await fetch(getPluginServerRoute(getState()) + `/lists?reminder=${reminder}&channel_id=${channelId}`, Client4.getOptions({
             method: 'get',
         }));
         data = await resp.json();
@@ -159,30 +164,34 @@ export const fetchAllIssueLists = (reminder = false) => async (dispatch, getStat
 };
 
 export const remove = (id) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/remove', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({id, channel_id: channelId}),
     }));
 };
 
 export const complete = (id) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/complete', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({id, channel_id: channelId}),
     }));
 };
 
 export const accept = (id) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/accept', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({id, channel_id: channelId}),
     }));
 };
 
 export const bump = (id) => async (dispatch, getState) => {
+    const channelId = getCurrentChannelId(getState());
     await fetch(getPluginServerRoute(getState()) + '/bump', Client4.getOptions({
         method: 'post',
-        body: JSON.stringify({id}),
+        body: JSON.stringify({id, channel_id: channelId}),
     }));
 };
 

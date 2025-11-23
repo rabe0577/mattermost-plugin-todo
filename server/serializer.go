@@ -39,6 +39,7 @@ type AddAPIRequest struct {
 	Description   string `json:"description"`
 	SendTo        string `json:"send_to"`
 	PostID        string `json:"post_id"`
+	ChannelID     string `json:"channel_id"`
 }
 
 func GetAddIssuePayloadFromJSON(data io.Reader) (*AddAPIRequest, error) {
@@ -66,6 +67,7 @@ type EditAPIRequest struct {
 	ID          string `json:"id"`
 	Message     string `json:"message"`
 	Description string `json:"description"`
+	ChannelID   string `json:"channel_id"`
 }
 
 func GetEditIssuePayloadFromJSON(data io.Reader) (*EditAPIRequest, error) {
@@ -90,8 +92,9 @@ func (e *EditAPIRequest) IsValid() error {
 }
 
 type ChangeAssignmentAPIRequest struct {
-	ID     string `json:"id"`
-	SendTo string `json:"send_to"`
+	ID        string `json:"id"`
+	SendTo    string `json:"send_to"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetChangeAssignmentPayloadFromJSON(data io.Reader) (*ChangeAssignmentAPIRequest, error) {
@@ -120,7 +123,8 @@ func (c *ChangeAssignmentAPIRequest) IsValid() error {
 }
 
 type AcceptAPIRequest struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetAcceptRequestPayloadFromJSON(data io.Reader) (*AcceptAPIRequest, error) {
@@ -145,7 +149,8 @@ func (a *AcceptAPIRequest) IsValid() error {
 }
 
 type CompleteAPIRequest struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetCompleteIssuePayloadFromJSON(data io.Reader) (*CompleteAPIRequest, error) {
@@ -170,7 +175,8 @@ func (c *CompleteAPIRequest) IsValid() error {
 }
 
 type RemoveAPIRequest struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetRemoveIssuePayloadFromJSON(data io.Reader) (*RemoveAPIRequest, error) {
@@ -195,7 +201,8 @@ func (r *RemoveAPIRequest) IsValid() error {
 }
 
 type BumpAPIRequest struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetBumpIssuePayloadFromJSON(data io.Reader) (*BumpAPIRequest, error) {
