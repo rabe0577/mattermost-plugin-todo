@@ -56,3 +56,39 @@ The version of a plugin is determined at compile time, automatically populating 
 * If there is no version tag, an empty version will be combined with the short hash, e.g. `0.0.0+76081421`.
 
 To disable this behaviour, manually populate and maintain the `version` field.
+
+### Build & package on Ubuntu
+
+The following commands install the required toolchain and build a distributable plugin archive on a fresh Ubuntu host:
+
+```bash
+# Install system dependencies
+sudo apt update
+sudo apt install -y curl git make build-essential
+
+# Install Go 1.22 (matches go.mod); adjust the URL for newer point releases if needed
+GO_VERSION=1.22.8
+curl -LO https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+
+# Install Node.js (LTS) and npm via Nodesource
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Workaround for OpenSSL 3 on newer Node versions
+export NODE_OPTIONS=--openssl-legacy-provider
+
+# Clone the repo (skip if you already have the source)
+git clone https://github.com/mattermost/mattermost-plugin-todo.git
+cd mattermost-plugin-todo
+
+# Build full multi-platform release (Linux/Windows/macOS)
+make dist
+# The plugin tarball will be in dist/com.mattermost.plugin-todo-<version>.tar.gz
+
+# Optional: faster local build for current OS/arch only
+# MM_SERVICESETTINGS_ENABLEDEVELOPER=1 make dist
+```

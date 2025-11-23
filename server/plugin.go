@@ -27,6 +27,14 @@ const (
 	ErrorMsgAddIssue = "Unable to add issue"
 )
 
+func resolveListOwner(channelID, userID string) string {
+	if channelID != "" {
+		return channelID
+	}
+
+	return userID
+}
+
 // ListManager represents the logic on the lists
 type ListManager interface {
 	// AddIssue adds a todo to userID's myList with the message
@@ -211,9 +219,10 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	senderName := p.listManager.GetUserName(userID)
+	listOwnerID := resolveListOwner(addRequest.ChannelID, userID)
 
 	if addRequest.SendTo == "" {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
+		_, err = p.listManager.AddIssue(listOwnerID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -222,7 +231,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 
 		p.trackAddIssue(userID, sourceWebapp, addRequest.PostID != "")
 
-		p.sendRefreshEvent(userID, []string{MyListKey})
+		p.sendRefreshEvent(userID, []string{MyListKey}, addRequest.ChannelID)
 
 		replyMessage := fmt.Sprintf("@%s attached a todo to this thread", senderName)
 		p.postReplyIfNeeded(addRequest.PostID, replyMessage, addRequest.Message, addRequest.PostPermalink)
@@ -239,7 +248,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if receiver.Id == userID {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.Description, addRequest.PostID, addRequest.PostPermalink)
+		_, err = p.listManager.AddIssue(listOwnerID, addRequest.Message, addRequest.Description, addRequest.PostID, addRequest.PostPermalink)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -248,7 +257,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 
 		p.trackAddIssue(userID, sourceWebapp, addRequest.PostID != "")
 
-		p.sendRefreshEvent(userID, []string{MyListKey})
+		p.sendRefreshEvent(userID, []string{MyListKey}, addRequest.ChannelID)
 
 		replyMessage := fmt.Sprintf("@%s attached a todo to this thread", senderName)
 		p.postReplyIfNeeded(addRequest.PostID, replyMessage, addRequest.Message, addRequest.PostPermalink)
@@ -297,8 +306,10 @@ func (p *Plugin) postReplyIfNeeded(postID, message, todo, postPermalink string) 
 
 func (p *Plugin) handleLists(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("Mattermost-User-ID")
+	channelID := r.URL.Query().Get("channel_id")
+	listOwnerID := resolveListOwner(channelID, userID)
 
-	allListIssue, err := p.listManager.GetAllList(userID)
+	allListIssue, err := p.listManager.GetAllList(listOwnerID)
 	if err != nil {
 		msg := "Unable to get issues for user"
 		p.API.LogError(msg, "err", err.Error())
@@ -306,7 +317,7 @@ func (p *Plugin) handleLists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if allListIssue != nil && len(allListIssue.My) > 0 && r.URL.Query().Get("reminder") == "true" && p.getReminderPreference(userID) {
+	if channelID == "" && allListIssue != nil && len(allListIssue.My) > 0 && r.URL.Query().Get("reminder") == "true" && p.getReminderPreference(userID) {
 		var lastReminderAt int64
 		lastReminderAt, err = p.getLastReminderTimeForUser(userID)
 		if err != nil {
@@ -364,7 +375,9 @@ func (p *Plugin) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description)
+	listOwnerID := resolveListOwner(editRequest.ChannelID, userID)
+
+	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(listOwnerID, editRequest.ID, editRequest.Message, editRequest.Description)
 	if err != nil {
 		msg := "Unable to edit message"
 		p.API.LogError(msg, "err", err.Error())
@@ -373,7 +386,7 @@ func (p *Plugin) handleEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p.trackEditIssue(userID)
-	p.sendRefreshEvent(userID, []string{list})
+	p.sendRefreshEvent(userID, []string{list}, editRequest.ChannelID)
 
 	if foreignUserID != "" {
 		var lists []string
@@ -414,7 +427,9 @@ func (p *Plugin) handleChangeAssignment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	issue, oldOwner, err := p.listManager.ChangeAssignment(changeRequest.ID, userID, receiver.Id)
+	listOwnerID := resolveListOwner(changeRequest.ChannelID, userID)
+
+	issue, oldOwner, err := p.listManager.ChangeAssignment(changeRequest.ID, listOwnerID, receiver.Id)
 	if err != nil {
 		msg := "Unable to change the assignment of an issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -424,7 +439,7 @@ func (p *Plugin) handleChangeAssignment(w http.ResponseWriter, r *http.Request) 
 
 	p.trackChangeAssignment(userID)
 
-	p.sendRefreshEvent(userID, []string{MyListKey, OutListKey})
+	p.sendRefreshEvent(userID, []string{MyListKey, OutListKey}, changeRequest.ChannelID)
 
 	userName := p.listManager.GetUserName(userID)
 	if receiver.Id != userID {
@@ -455,7 +470,9 @@ func (p *Plugin) handleAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	todoMessage, sender, err := p.listManager.AcceptIssue(userID, acceptRequest.ID)
+	listOwnerID := resolveListOwner(acceptRequest.ChannelID, userID)
+
+	todoMessage, sender, err := p.listManager.AcceptIssue(listOwnerID, acceptRequest.ID)
 	if err != nil {
 		msg := "Unable to accept issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -465,7 +482,7 @@ func (p *Plugin) handleAccept(w http.ResponseWriter, r *http.Request) {
 
 	p.trackAcceptIssue(userID)
 
-	p.sendRefreshEvent(userID, []string{MyListKey, InListKey})
+	p.sendRefreshEvent(userID, []string{MyListKey, InListKey}, acceptRequest.ChannelID)
 	p.sendRefreshEvent(sender, []string{OutListKey})
 
 	userName := p.listManager.GetUserName(userID)
@@ -489,7 +506,9 @@ func (p *Plugin) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issue, foreignID, listToUpdate, err := p.listManager.CompleteIssue(userID, completeRequest.ID)
+	listOwnerID := resolveListOwner(completeRequest.ChannelID, userID)
+
+	issue, foreignID, listToUpdate, err := p.listManager.CompleteIssue(listOwnerID, completeRequest.ID)
 	if err != nil {
 		msg := "Unable to complete issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -497,7 +516,7 @@ func (p *Plugin) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.sendRefreshEvent(userID, []string{listToUpdate})
+	p.sendRefreshEvent(userID, []string{listToUpdate}, completeRequest.ChannelID)
 
 	p.trackCompleteIssue(userID)
 
@@ -535,14 +554,16 @@ func (p *Plugin) handleRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issue, foreignID, isSender, listToUpdate, err := p.listManager.RemoveIssue(userID, removeRequest.ID)
+	listOwnerID := resolveListOwner(removeRequest.ChannelID, userID)
+
+	issue, foreignID, isSender, listToUpdate, err := p.listManager.RemoveIssue(listOwnerID, removeRequest.ID)
 	if err != nil {
 		msg := "Unable to remove issue"
 		p.API.LogError(msg, "err", err.Error())
 		p.handleErrorWithCode(w, http.StatusInternalServerError, msg, err)
 		return
 	}
-	p.sendRefreshEvent(userID, []string{listToUpdate})
+	p.sendRefreshEvent(userID, []string{listToUpdate}, removeRequest.ChannelID)
 
 	p.trackRemoveIssue(userID)
 
@@ -587,7 +608,9 @@ func (p *Plugin) handleBump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	todo, foreignUser, foreignIssueID, err := p.listManager.BumpIssue(userID, bumpRequest.ID)
+	listOwnerID := resolveListOwner(bumpRequest.ChannelID, userID)
+
+	todo, foreignUser, foreignIssueID, err := p.listManager.BumpIssue(listOwnerID, bumpRequest.ID)
 	if err != nil {
 		msg := "Unable to bump issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -638,11 +661,17 @@ func (p *Plugin) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Plugin) sendRefreshEvent(userID string, lists []string) {
+func (p *Plugin) sendRefreshEvent(userID string, lists []string, channelID ...string) {
+	broadcast := &model.WebsocketBroadcast{UserId: userID}
+	if len(channelID) > 0 && channelID[0] != "" {
+		broadcast.UserId = ""
+		broadcast.ChannelId = channelID[0]
+	}
+
 	p.API.PublishWebSocketEvent(
 		WSEventRefresh,
 		map[string]interface{}{"lists": lists},
-		&model.WebsocketBroadcast{UserId: userID},
+		broadcast,
 	)
 }
 

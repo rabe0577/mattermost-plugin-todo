@@ -209,24 +209,25 @@ func (p *Plugin) runSendCommand(args []string, extra *model.CommandArgs) (bool, 
 
 func (p *Plugin) runAddCommand(args []string, extra *model.CommandArgs) (bool, error) {
 	message := strings.Join(args, " ")
+	listOwnerID := extra.ChannelId
 
 	if message == "" {
 		p.postCommandResponse(extra, "Please add a task.")
 		return false, nil
 	}
 
-	newIssue, err := p.listManager.AddIssue(extra.UserId, message, "", "", "")
+	newIssue, err := p.listManager.AddIssue(listOwnerID, message, "", "", "")
 	if err != nil {
 		return false, err
 	}
 
 	p.trackAddIssue(extra.UserId, sourceCommand, false)
 
-	p.sendRefreshEvent(extra.UserId, []string{MyListKey})
+	p.sendRefreshEvent(extra.UserId, []string{MyListKey}, listOwnerID)
 
 	responseMessage := "Added Todo."
 
-	issues, err := p.listManager.GetIssueList(extra.UserId, MyListKey)
+	issues, err := p.listManager.GetIssueList(listOwnerID, MyListKey)
 	if err != nil {
 		p.API.LogError(err.Error())
 		p.postCommandResponse(extra, responseMessage)
@@ -258,6 +259,7 @@ func (p *Plugin) runAddCommand(args []string, extra *model.CommandArgs) (bool, e
 
 func (p *Plugin) runListCommand(args []string, extra *model.CommandArgs) (bool, error) {
 	listID := MyListKey
+	listOwnerID := extra.ChannelId
 	responseMessage := "Todo List:\n\n"
 
 	if len(args) > 0 {
@@ -275,12 +277,12 @@ func (p *Plugin) runListCommand(args []string, extra *model.CommandArgs) (bool, 
 		}
 	}
 
-	issues, err := p.listManager.GetIssueList(extra.UserId, listID)
+	issues, err := p.listManager.GetIssueList(listOwnerID, listID)
 	if err != nil {
 		return false, err
 	}
 
-	p.sendRefreshEvent(extra.UserId, []string{MyListKey, OutListKey, InListKey})
+	p.sendRefreshEvent(extra.UserId, []string{MyListKey, OutListKey, InListKey}, listOwnerID)
 
 	responseMessage += issuesListToString(issues)
 	p.postCommandResponse(extra, responseMessage)
@@ -289,7 +291,8 @@ func (p *Plugin) runListCommand(args []string, extra *model.CommandArgs) (bool, 
 }
 
 func (p *Plugin) runPopCommand(_ []string, extra *model.CommandArgs) (bool, error) {
-	issue, foreignID, err := p.listManager.PopIssue(extra.UserId)
+	listOwnerID := extra.ChannelId
+	issue, foreignID, err := p.listManager.PopIssue(listOwnerID)
 	if err != nil {
 		if err.Error() == "cannot find issue" {
 			p.postCommandResponse(extra, "There are no Todos to pop.")
@@ -307,14 +310,14 @@ func (p *Plugin) runPopCommand(_ []string, extra *model.CommandArgs) (bool, erro
 		p.PostBotDM(foreignID, message)
 	}
 
-	p.sendRefreshEvent(extra.UserId, []string{MyListKey})
+	p.sendRefreshEvent(extra.UserId, []string{MyListKey}, listOwnerID)
 
 	responseMessage := "Removed top Todo."
 
 	replyMessage := fmt.Sprintf("@%s popped a todo attached to this thread", userName)
 	p.postReplyIfNeeded(issue.PostID, replyMessage, issue.Message, issue.PostPermalink)
 
-	issues, err := p.listManager.GetIssueList(extra.UserId, MyListKey)
+	issues, err := p.listManager.GetIssueList(listOwnerID, MyListKey)
 	if err != nil {
 		p.API.LogError(err.Error())
 		p.postCommandResponse(extra, responseMessage)
