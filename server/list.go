@@ -14,6 +14,10 @@ const (
 	InListKey = "_in"
 	// OutListKey is the key used to store the list of sent todos
 	OutListKey = "_out"
+	// ChannelListKey is the key used to store todos shared with a channel
+	ChannelListKey = "_channel"
+	// ChannelCompletedListKey is the key used to store completed todos for a channel
+	ChannelCompletedListKey = "_channel_completed"
 )
 
 // ListStore represents the KVStore operations for lists
@@ -56,8 +60,8 @@ func NewListManager(api plugin.API) ListManager {
 	}
 }
 
-func (l *listManager) AddIssue(userID, message, postPermalink, description, postID string) (*Issue, error) {
-	issue := newIssue(message, postPermalink, description, postID)
+func (l *listManager) AddIssue(userID, message, postPermalink, description, postID string, dueAt int64) (*Issue, error) {
+	issue := newIssue(message, postPermalink, description, postID, dueAt)
 
 	if err := l.store.SaveIssue(issue); err != nil {
 		return nil, err
@@ -73,13 +77,13 @@ func (l *listManager) AddIssue(userID, message, postPermalink, description, post
 	return issue, nil
 }
 
-func (l *listManager) SendIssue(senderID, receiverID, message, postPermalink, description, postID string) (string, error) {
-	senderIssue := newIssue(message, postPermalink, description, postID)
+func (l *listManager) SendIssue(senderID, receiverID, message, postPermalink, description, postID string, dueAt int64) (string, error) {
+	senderIssue := newIssue(message, postPermalink, description, postID, dueAt)
 	if err := l.store.SaveIssue(senderIssue); err != nil {
 		return "", err
 	}
 
-	receiverIssue := newIssue(message, postPermalink, description, postID)
+	receiverIssue := newIssue(message, postPermalink, description, postID, dueAt)
 	if err := l.store.SaveIssue(receiverIssue); err != nil {
 		if rollbackError := l.store.RemoveIssue(senderIssue.ID); rollbackError != nil {
 			l.api.LogError("cannot rollback sender issue after send error, Err=", err.Error())
@@ -111,6 +115,23 @@ func (l *listManager) SendIssue(senderID, receiverID, message, postPermalink, de
 	}
 
 	return receiverIssue.ID, nil
+}
+
+func (l *listManager) AddChannelIssue(channelID, assigneeID, message, postPermalink, description, postID string, dueAt int64) (*Issue, error) {
+	issue := newIssue(message, postPermalink, description, postID, dueAt)
+
+	if err := l.store.SaveIssue(issue); err != nil {
+		return nil, err
+	}
+
+	if err := l.store.AddReference(channelID, issue.ID, ChannelListKey, assigneeID, ""); err != nil {
+		if rollbackError := l.store.RemoveIssue(issue.ID); rollbackError != nil {
+			l.api.LogError("cannot rollback channel issue after add error, Err=", rollbackError.Error())
+		}
+		return nil, err
+	}
+
+	return issue, nil
 }
 
 func (l *listManager) GetIssueList(userID, listID string) ([]*ExtendedIssue, error) {
@@ -153,6 +174,48 @@ func (l *listManager) GetAllList(userID string) (listsIssue *ListsIssue, err err
 	}, nil
 }
 
+func (l *listManager) GetChannelList(channelID string) ([]*ExtendedIssue, error) {
+	return l.GetIssueList(channelID, ChannelListKey)
+}
+
+func (l *listManager) GetCompletedChannelList(channelID string) ([]*ExtendedIssue, error) {
+	return l.GetIssueList(channelID, ChannelCompletedListKey)
+}
+
+func (l *listManager) CompleteChannelIssue(channelID, issueID string) (*Issue, error) {
+	ir, _, err := l.store.GetIssueReference(channelID, issueID, ChannelListKey)
+	if err != nil {
+		return nil, err
+	}
+
+	issue, err := l.store.GetIssue(issueID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := l.store.RemoveReference(channelID, issueID, ChannelListKey); err != nil {
+		return nil, err
+	}
+
+        if err := l.store.AddReference(channelID, issueID, ChannelCompletedListKey, ir.ForeignUserID, ir.ForeignIssueID); err != nil {
+		return nil, err
+	}
+
+	return issue, nil
+}
+
+func (l *listManager) RemoveChannelIssue(channelID, issueID string) error {
+	if err := l.store.RemoveReference(channelID, issueID, ChannelListKey); err == nil {
+		return nil
+	}
+
+	if err := l.store.RemoveReference(channelID, issueID, ChannelCompletedListKey); err == nil {
+		return nil
+	}
+
+	return errors.New("cannot find issue")
+}
+
 func (l *listManager) CompleteIssue(userID, issueID string) (issue *Issue, foreignID string, listToUpdate string, err error) {
 	issueList, ir, _ := l.store.GetIssueListAndReference(userID, issueID)
 	if ir == nil {
@@ -185,7 +248,7 @@ func (l *listManager) CompleteIssue(userID, issueID string) (issue *Issue, forei
 	return issue, ir.ForeignUserID, issueList, nil
 }
 
-func (l *listManager) EditIssue(userID, issueID, newMessage, newDescription string) (foreignUserID, list, oldMessage string, err error) {
+func (l *listManager) EditIssue(userID, issueID, newMessage, newDescription string, dueAt int64) (foreignUserID, list, oldMessage string, err error) {
 	issue, err := l.store.GetIssue(issueID)
 	if err != nil {
 		return "", "", "", err
@@ -202,6 +265,7 @@ func (l *listManager) EditIssue(userID, issueID, newMessage, newDescription stri
 			oldMessage = foreignIssue.Message
 			foreignIssue.Message = newMessage
 			foreignIssue.Description = newDescription
+			foreignIssue.DueAt = dueAt
 			foreignErr = l.store.SaveIssue(foreignIssue)
 			if foreignErr != nil {
 				l.api.LogError("cannot edit foreign issue after edit", "error", foreignErr.Error())
@@ -211,6 +275,7 @@ func (l *listManager) EditIssue(userID, issueID, newMessage, newDescription stri
 
 	issue.Message = newMessage
 	issue.Description = newDescription
+	issue.DueAt = dueAt
 	err = l.store.SaveIssue(issue)
 	if err != nil {
 		return "", "", "", err
@@ -269,7 +334,7 @@ func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo str
 		}
 	}
 
-	receiverIssue := newIssue(issue.Message, issue.PostPermalink, issue.Description, issue.PostID)
+	receiverIssue := newIssue(issue.Message, issue.PostPermalink, issue.Description, issue.PostID, issue.DueAt)
 	if err := l.store.SaveIssue(receiverIssue); err != nil {
 		return nil, "", err
 	}
@@ -422,7 +487,8 @@ func (l *listManager) extendIssueInfo(issue *Issue, ir *IssueRef) *ExtendedIssue
 	}
 
 	feIssue := &ExtendedIssue{
-		Issue: *issue,
+		Issue:      *issue,
+		AssigneeID: ir.ForeignUserID,
 	}
 
 	if ir.ForeignUserID == "" {
@@ -444,6 +510,7 @@ func (l *listManager) extendIssueInfo(issue *Issue, ir *IssueRef) *ExtendedIssue
 	userName := l.GetUserName(ir.ForeignUserID)
 
 	feIssue.ForeignUser = userName
+	feIssue.AssigneeName = userName
 	feIssue.ForeignList = listName
 	feIssue.ForeignPosition = n
 

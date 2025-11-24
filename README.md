@@ -48,6 +48,42 @@ Every day you will get a reminder of the issues you need to complete from the `T
 
 This plugin contains both a server and web app portion. Read our documentation about the [Developer Workflow](https://developers.mattermost.com/integrate/plugins/developer-workflow/) and [Developer Setup](https://developers.mattermost.com/integrate/plugins/developer-setup/) for more information about developing and extending plugins.
 
+### Building on Ubuntu
+
+The plugin bundles a Go back end and a React front end. The following steps outline a clean build on Ubuntu 22.04 or later:
+
+1. Install the toolchain and helpers:
+   ```bash
+   sudo apt update
+   sudo apt install -y git make curl build-essential
+   ```
+2. Install Go (version 1.20 or newer is recommended). The example below uses the official tarball; adjust the version as needed:
+   ```bash
+   curl -LO https://go.dev/dl/go1.21.11.linux-amd64.tar.gz
+   sudo rm -rf /usr/local/go
+   sudo tar -C /usr/local -xzf go1.21.11.linux-amd64.tar.gz
+   echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+3. Install Node.js (18.x LTS works well) and npm. You can use the NodeSource setup script:
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+   sudo apt install -y nodejs
+   ```
+4. Clone the repository and install JavaScript dependencies:
+   ```bash
+   git clone https://github.com/mattermost/mattermost-plugin-todo.git
+   cd mattermost-plugin-todo/webapp
+   npm install
+   ```
+5. Return to the repository root and build the plugin bundle:
+   ```bash
+   cd ..
+   make dist
+   ```
+   The compiled plugin `.tar.gz` file will be placed in the `dist/` directory.
+6. Upload the generated bundle through **System Console → Plugin Management → Upload Plugin** in Mattermost, or copy it into the Mattermost `plugins/` directory and restart the server.
+
 ### Releasing new versions
 
 The version of a plugin is determined at compile time, automatically populating a `version` field in the [plugin manifest](plugin.json):

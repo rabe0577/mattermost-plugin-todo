@@ -24,11 +24,21 @@ import PostPermalink from './post_permalink';
 const PostUtils = window.PostUtils; // import the post utilities
 
 function TodoItem(props) {
-    const {issue, theme, siteURL, accept, complete, list, remove, bump, openTodoToast, openAssigneeModal, setEditingTodo, editIssue} = props;
+    const {issue, theme, siteURL, accept, complete, list, remove, bump, openTodoToast, openAssigneeModal, setEditingTodo, editIssue, showAssignee = true} = props;
+    const localDateTime = (timestamp) => {
+        if (!timestamp) {
+            return '';
+        }
+
+        const dateObj = new Date(timestamp);
+        const tzOffset = dateObj.getTimezoneOffset() * 60000;
+        return new Date(timestamp - tzOffset).toISOString().slice(0, 16);
+    };
     const [done, setDone] = useState(false);
     const [editTodo, setEditTodo] = useState(false);
     const [message, setMessage] = useState(issue.message);
     const [description, setDescription] = useState(issue.description);
+    const [dueDate, setDueDate] = useState(localDateTime(issue.due_at));
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const [hidden, setHidden] = useState(false);
     const date = new Date(issue.create_at);
@@ -42,6 +52,21 @@ function TodoItem(props) {
     const formattedDate = month + ' ' + day + ', ' + year;
 
     const style = getStyle(theme);
+
+    const getDueBadgeStyle = (dueAt, styles) => {
+        const dueDateObj = new Date(dueAt);
+        const now = new Date();
+
+        if (dueDateObj.getTime() < now.getTime()) {
+            return styles.dueBadgeOverdue;
+        }
+
+        if (dueDateObj.toDateString() === now.toDateString()) {
+            return styles.dueBadgeToday;
+        }
+
+        return styles.dueBadgeUpcoming;
+    };
 
     const handleClick = (e) => handleFormattedTextClick(e);
 
@@ -149,7 +174,8 @@ function TodoItem(props) {
 
     const saveEditedTodo = () => {
         setEditTodo(false);
-        editIssue(issue.id, message, description);
+        const dueAt = dueDate ? new Date(dueDate).getTime() : 0;
+        editIssue(issue.id, message, description, dueAt);
     };
 
     const editAssignee = () => {
@@ -183,6 +209,15 @@ function TodoItem(props) {
                                     onKeyDown={(e) => onKeyDown(e)}
                                     onChange={(e) => setDescription(e.target.value)}
                                 />
+                                <div style={style.dueInputContainer}>
+                                    <label style={style.dueLabel}>{'Due date'}</label>
+                                    <input
+                                        type='datetime-local'
+                                        value={dueDate}
+                                        onChange={(e) => setDueDate(e.target.value)}
+                                        style={style.dueInput}
+                                    />
+                                </div>
                             </div>
                         )}
 
@@ -207,6 +242,19 @@ function TodoItem(props) {
                                     </div>
                                 )}
                                 {listPositionMessage && listDiv}
+                                {showAssignee && issue.assignee_name && (
+                                    <div
+                                        className='light'
+                                        style={style.assigneeLabel}
+                                    >
+                                        <CompassIcon icon='account-outline'/> {'Assigned to ' + issue.assignee_name}
+                                    </div>
+                                )}
+                                {issue.due_at ? (
+                                    <div style={{...style.dueBadge, ...getDueBadgeStyle(issue.due_at, style)}}>
+                                        <CompassIcon icon='calendar-blank-outline'/> {new Date(issue.due_at).toLocaleString()}
+                                    </div>
+                                ) : null}
                             </div>
                         )}
                     </div>
@@ -237,12 +285,14 @@ function TodoItem(props) {
                                 action={() => setEditTodo(true)}
                                 shortcut='e'
                             />
-                            <MenuItem
-                                text='Assign to…'
-                                icon='account-plus-outline'
-                                action={editAssignee}
-                                shortcut='a'
-                            />
+                            {showAssignee && (
+                                <MenuItem
+                                    text='Assign to…'
+                                    icon='account-plus-outline'
+                                    action={editAssignee}
+                                    shortcut='a'
+                                />
+                            )}
                             {canRemove(list, issue.list) && (
                                 <MenuItem
                                     action={removeTodo}
@@ -341,6 +391,50 @@ const getStyle = makeStyleFromTheme((theme) => {
             resize: 'none',
             boxShadow: 'none',
         },
+        dueBadge: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 8px',
+            marginTop: 6,
+            borderRadius: 6,
+            fontSize: 12,
+        },
+        dueBadgeOverdue: {
+            backgroundColor: '#fde6e6',
+            color: '#d24b4e',
+        },
+        dueBadgeToday: {
+            backgroundColor: '#fff4e5',
+            color: '#d47400',
+        },
+        dueBadgeUpcoming: {
+            backgroundColor: changeOpacity(theme.centerChannelColor, 0.08),
+            color: changeOpacity(theme.centerChannelColor, 0.88),
+        },
+        assigneeLabel: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+        },
+        dueInput: {
+            border: `1px solid ${changeOpacity(theme.centerChannelColor, 0.16)}`,
+            borderRadius: 4,
+            padding: '6px 8px',
+            backgroundColor: theme.centerChannelBg,
+            color: theme.centerChannelColor,
+            marginTop: 6,
+        },
+        dueInputContainer: {
+            display: 'flex',
+            flexDirection: 'column',
+            marginTop: 6,
+        },
+        dueLabel: {
+            fontSize: 12,
+            color: changeOpacity(theme.centerChannelColor, 0.72),
+            marginBottom: 2,
+        },
     };
 });
 
@@ -357,6 +451,7 @@ TodoItem.propTypes = {
     openAssigneeModal: PropTypes.func.isRequired,
     setEditingTodo: PropTypes.func.isRequired,
     openTodoToast: PropTypes.func.isRequired,
+    showAssignee: PropTypes.bool,
 };
 
 export default TodoItem;

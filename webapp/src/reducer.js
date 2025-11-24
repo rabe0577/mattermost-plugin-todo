@@ -84,13 +84,19 @@ const postID = (state = '', action) => {
     }
 };
 
-const allIssues = (state = {my: [], in: [], out: []}, action) => {
-    switch (action.type) {
-    case GET_ALL_ISSUES:
-        return action.data ?? state;
-    default:
-        return state;
-    }
+const allIssues = (state = {my: [], in: [], out: [], channel: [], channel_completed: []}, action) => {
+switch (action.type) {
+case GET_ALL_ISSUES:
+return {
+my: action.data?.my ?? state.my,
+in: action.data?.in ?? state.in,
+out: action.data?.out ?? state.out,
+channel: action.data?.channel ?? state.channel,
+channel_completed: action.data?.channel_completed ?? state.channel_completed,
+};
+default:
+return state;
+}
 };
 
 function rhsPluginAction(state = null, action) {
