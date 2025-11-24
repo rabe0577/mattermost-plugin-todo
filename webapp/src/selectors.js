@@ -28,7 +28,11 @@ export const getMessage = (state) => {
 export const getMyIssues = (state) => getAllIssues(state).my;
 export const getInIssues = (state) => getAllIssues(state).in;
 export const getOutIssues = (state) => getAllIssues(state).out;
+export const getChannelIssues = (state) => getAllIssues(state).channel ?? [];
+export const getCompletedChannelIssues = (state) => getAllIssues(state).channel_completed ?? [];
 export const getAllIssues = (state) => getPluginState(state).allIssues;
+export const getCurrentChannelId = (state) => state.entities.channels.currentChannelId;
+export const getCurrentUserId = (state) => state.entities.users.currentUserId;
 export const getCurrentTeamRoute = (state) => {
     const basePath = getSiteURL(state);
     const teamName = state.entities.teams.teams[state.entities.teams.currentTeamId].name;

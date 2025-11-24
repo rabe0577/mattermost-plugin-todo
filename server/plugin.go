@@ -30,9 +30,9 @@ const (
 // ListManager represents the logic on the lists
 type ListManager interface {
 	// AddIssue adds a todo to userID's myList with the message
-	AddIssue(userID, message, postPermalink, description, postID string) (*Issue, error)
+	AddIssue(userID, message, postPermalink, description, postID string, dueAt int64) (*Issue, error)
 	// SendIssue sends the todo with the message from senderID to receiverID and returns the receiver's issueID
-	SendIssue(senderID, receiverID, message, postPermalink, description, postID string) (string, error)
+	SendIssue(senderID, receiverID, message, postPermalink, description, postID string, dueAt int64) (string, error)
 	// GetIssueList gets the todos on listID for userID
 	GetIssueList(userID, listID string) ([]*ExtendedIssue, error)
 	// GetAllList get all issues
@@ -48,11 +48,21 @@ type ListManager interface {
 	// BumpIssue moves a issueID sent by userID to the top of its receiver inbox list
 	BumpIssue(userID string, issueID string) (todo *Issue, receiver string, foreignIssueID string, err error)
 	// EditIssue updates the message on an issue
-	EditIssue(userID string, issueID string, newMessage string, newDescription string) (foreignUserID string, list string, oldMessage string, err error)
+	EditIssue(userID string, issueID string, newMessage string, newDescription string, dueAt int64) (foreignUserID string, list string, oldMessage string, err error)
 	// ChangeAssignment updates an issue to assign a different person
 	ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, err error)
 	// GetUserName returns the readable username from userID
 	GetUserName(userID string) string
+	// AddChannelIssue adds a todo scoped to a channel
+	AddChannelIssue(channelID, assigneeID, message, postPermalink, description, postID string, dueAt int64) (*Issue, error)
+	// GetChannelList returns the channel scoped todos
+	GetChannelList(channelID string) ([]*ExtendedIssue, error)
+	// GetCompletedChannelList returns the completed channel todos
+	GetCompletedChannelList(channelID string) ([]*ExtendedIssue, error)
+	// CompleteChannelIssue archives a channel todo into the completed list
+	CompleteChannelIssue(channelID, issueID string) (*Issue, error)
+	// RemoveChannelIssue deletes a channel todo from active or completed lists
+	RemoveChannelIssue(channelID, issueID string) error
 }
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -210,10 +220,44 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if addRequest.ChannelID != "" {
+		if _, appErr := p.client.Channel.GetMember(addRequest.ChannelID, userID); appErr != nil {
+			p.handleErrorWithCode(w, http.StatusForbidden, "Unable to add channel todo for non-member", appErr)
+			return
+		}
+
+		assigneeID := ""
+		if addRequest.SendTo != "" {
+			receiver, appErr := p.API.GetUserByUsername(addRequest.SendTo)
+			if appErr != nil {
+				msg := "Unable to find user"
+				p.API.LogError(msg, "err", appErr.Error())
+				p.handleErrorWithCode(w, http.StatusInternalServerError, msg, appErr)
+				return
+			}
+			assigneeID = receiver.Id
+		}
+
+		issue, addErr := p.listManager.AddChannelIssue(addRequest.ChannelID, assigneeID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, addRequest.DueAt)
+		if addErr != nil {
+			p.API.LogError(ErrorMsgAddIssue, "err", addErr.Error())
+			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, addErr)
+			return
+		}
+
+		p.trackAddIssue(userID, sourceWebapp, addRequest.PostID != "")
+		p.sendRefreshEvent(userID, []string{ChannelListKey})
+
+		senderName := p.listManager.GetUserName(userID)
+		replyMessage := fmt.Sprintf("@%s attached a todo to this thread", senderName)
+		p.postReplyIfNeeded(addRequest.PostID, replyMessage, issue.Message, issue.PostPermalink)
+		return
+	}
+
 	senderName := p.listManager.GetUserName(userID)
 
 	if addRequest.SendTo == "" {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
+		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, addRequest.DueAt)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -239,7 +283,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if receiver.Id == userID {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.Description, addRequest.PostID, addRequest.PostPermalink)
+		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.Description, addRequest.PostID, addRequest.PostPermalink, addRequest.DueAt)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -266,7 +310,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issueID, err := p.listManager.SendIssue(userID, receiver.Id, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
+	issueID, err := p.listManager.SendIssue(userID, receiver.Id, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, addRequest.DueAt)
 	if err != nil {
 		msg := "Unable to send issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -306,6 +350,21 @@ func (p *Plugin) handleLists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	channelID := r.URL.Query().Get("channel_id")
+	if channelID != "" {
+		if _, appErr := p.client.Channel.GetMember(channelID, userID); appErr == nil {
+			channelIssues, channelErr := p.listManager.GetChannelList(channelID)
+			if channelErr == nil {
+				allListIssue.Channel = channelIssues
+			}
+
+			completedIssues, completeErr := p.listManager.GetCompletedChannelList(channelID)
+			if completeErr == nil {
+				allListIssue.ChannelCompleted = completedIssues
+			}
+		}
+	}
+
 	if allListIssue != nil && len(allListIssue.My) > 0 && r.URL.Query().Get("reminder") == "true" && p.getReminderPreference(userID) {
 		var lastReminderAt int64
 		lastReminderAt, err = p.getLastReminderTimeForUser(userID)
@@ -325,7 +384,10 @@ func (p *Plugin) handleLists(w http.ResponseWriter, r *http.Request) {
 		nt := time.Unix(now/1000, 0).In(timezone)
 		lt := time.Unix(lastReminderAt/1000, 0).In(timezone)
 		if nt.Sub(lt).Hours() >= 1 && (nt.Day() != lt.Day() || nt.Month() != lt.Month() || nt.Year() != lt.Year()) {
-			p.PostBotDM(userID, "Daily Reminder:\n\n"+issuesListToString(allListIssue.My))
+			reminderMessage := buildReminderMessage(allListIssue.My, timezone)
+			if reminderMessage != "" {
+				p.PostBotDM(userID, reminderMessage)
+			}
 			p.trackDailySummary(userID)
 			err = p.saveLastReminderTimeForUser(userID)
 			if err != nil {
@@ -364,7 +426,7 @@ func (p *Plugin) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description)
+	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description, editRequest.DueAt)
 	if err != nil {
 		msg := "Unable to edit message"
 		p.API.LogError(msg, "err", err.Error())
@@ -489,6 +551,29 @@ func (p *Plugin) handleComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if completeRequest.ChannelID != "" {
+		if _, appErr := p.client.Channel.GetMember(completeRequest.ChannelID, userID); appErr != nil {
+			p.handleErrorWithCode(w, http.StatusForbidden, "Unable to complete issue for non-member", appErr)
+			return
+		}
+
+		issue, completeErr := p.listManager.CompleteChannelIssue(completeRequest.ChannelID, completeRequest.ID)
+		if completeErr != nil {
+			msg := "Unable to complete issue"
+			p.API.LogError(msg, "err", completeErr.Error())
+			p.handleErrorWithCode(w, http.StatusInternalServerError, msg, completeErr)
+			return
+		}
+
+		p.sendRefreshEvent(userID, []string{ChannelListKey})
+		p.trackCompleteIssue(userID)
+
+		userName := p.listManager.GetUserName(userID)
+		replyMessage := fmt.Sprintf("@%s completed a todo attached to this thread", userName)
+		p.postReplyIfNeeded(issue.PostID, replyMessage, issue.Message, issue.PostPermalink)
+		return
+	}
+
 	issue, foreignID, listToUpdate, err := p.listManager.CompleteIssue(userID, completeRequest.ID)
 	if err != nil {
 		msg := "Unable to complete issue"
@@ -532,6 +617,24 @@ func (p *Plugin) handleRemove(w http.ResponseWriter, r *http.Request) {
 
 	if err = removeRequest.IsValid(); err != nil {
 		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate remove issue request payload.", err)
+		return
+	}
+
+	if removeRequest.ChannelID != "" {
+		if _, appErr := p.client.Channel.GetMember(removeRequest.ChannelID, userID); appErr != nil {
+			p.handleErrorWithCode(w, http.StatusForbidden, "Unable to remove issue for non-member", appErr)
+			return
+		}
+
+		if err := p.listManager.RemoveChannelIssue(removeRequest.ChannelID, removeRequest.ID); err != nil {
+			msg := "Unable to remove issue"
+			p.API.LogError(msg, "err", err.Error())
+			p.handleErrorWithCode(w, http.StatusInternalServerError, msg, err)
+			return
+		}
+
+		p.sendRefreshEvent(userID, []string{ChannelListKey})
+		p.trackRemoveIssue(userID)
 		return
 	}
 

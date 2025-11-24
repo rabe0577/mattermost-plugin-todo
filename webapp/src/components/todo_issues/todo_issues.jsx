@@ -14,7 +14,7 @@ import Tada from '../../illustrations/tada';
 
 function ToDoIssues(props) {
     const style = getStyle(props.theme);
-    const {theme, siteURL, accept, complete, list, remove, bump, addVisible, issues} = props;
+    const {theme, siteURL, accept, complete, list, remove, bump, addVisible, issues, showAssignee = true} = props;
 
     let emptyState = (
         <div style={style.completed.container}>
@@ -44,6 +44,7 @@ function ToDoIssues(props) {
             list={list}
             remove={remove}
             bump={bump}
+            showAssignee={showAssignee}
             key={issue.id}
         />
     ));
@@ -59,6 +60,7 @@ ToDoIssues.propTypes = {
     accept: PropTypes.func.isRequired,
     bump: PropTypes.func.isRequired,
     list: PropTypes.string.isRequired,
+    showAssignee: PropTypes.bool,
 };
 
 const getStyle = makeStyleFromTheme((theme) => {

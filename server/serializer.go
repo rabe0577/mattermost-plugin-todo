@@ -39,6 +39,8 @@ type AddAPIRequest struct {
 	Description   string `json:"description"`
 	SendTo        string `json:"send_to"`
 	PostID        string `json:"post_id"`
+	DueAt         int64  `json:"due_at"`
+	ChannelID     string `json:"channel_id"`
 }
 
 func GetAddIssuePayloadFromJSON(data io.Reader) (*AddAPIRequest, error) {
@@ -66,6 +68,7 @@ type EditAPIRequest struct {
 	ID          string `json:"id"`
 	Message     string `json:"message"`
 	Description string `json:"description"`
+	DueAt       int64  `json:"due_at"`
 }
 
 func GetEditIssuePayloadFromJSON(data io.Reader) (*EditAPIRequest, error) {
@@ -145,7 +148,8 @@ func (a *AcceptAPIRequest) IsValid() error {
 }
 
 type CompleteAPIRequest struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetCompleteIssuePayloadFromJSON(data io.Reader) (*CompleteAPIRequest, error) {
@@ -170,7 +174,8 @@ func (c *CompleteAPIRequest) IsValid() error {
 }
 
 type RemoveAPIRequest struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
 }
 
 func GetRemoveIssuePayloadFromJSON(data io.Reader) (*RemoveAPIRequest, error) {

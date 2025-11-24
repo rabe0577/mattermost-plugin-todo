@@ -31,6 +31,13 @@ export default class AddIssue extends React.PureComponent {
         autocompleteUsers: PropTypes.func.isRequired,
         openAssigneeModal: PropTypes.func.isRequired,
         removeAssignee: PropTypes.func.isRequired,
+        showAssignee: PropTypes.bool,
+        listType: PropTypes.string,
+        channelID: PropTypes.string,
+    };
+
+    static defaultProps = {
+        showAssignee: true,
     };
 
     constructor(props) {
@@ -41,6 +48,8 @@ export default class AddIssue extends React.PureComponent {
             postPermalink: props.postPermalink || '',
             description: '',
             sendTo: null,
+            showDuePicker: false,
+            dueDate: '',
             attachToThread: false,
             previewMarkdown: false,
             assigneeModal: false,
@@ -63,6 +72,8 @@ export default class AddIssue extends React.PureComponent {
                 message: '',
                 postPermalink: '',
                 sendTo: null,
+                showDuePicker: false,
+                dueDate: '',
                 attachToThread: false,
                 previewMarkdown: false,
             };
@@ -87,24 +98,29 @@ export default class AddIssue extends React.PureComponent {
 
     submit = () => {
         const {submit, postID, assignee, closeAddBox, removeAssignee} = this.props;
-        const {message, postPermalink, description, attachToThread, sendTo} = this.state;
+        const {message, postPermalink, description, attachToThread, sendTo, dueDate} = this.state;
         this.setState({
             message: '',
             description: '',
             postPermalink: '',
             isTyping: false,
+            dueDate: '',
         });
+
+        const dueAt = dueDate ? new Date(dueDate).getTime() : 0;
+
+        const channelID = this.props.listType === 'channel' ? this.props.channelID : '';
 
         if (attachToThread) {
             if (assignee) {
-                submit(message, postPermalink, description, assignee.username, postID);
+                submit(message, postPermalink, description, assignee.username, postID, dueAt, channelID);
             } else {
-                submit(message, postPermalink, description, sendTo, postID);
+                submit(message, postPermalink, description, sendTo, postID, dueAt, channelID);
             }
         } else if (assignee) {
-            submit(message, postPermalink, description, assignee.username);
+            submit(message, postPermalink, description, assignee.username, undefined, dueAt, channelID);
         } else {
-            submit(message, postPermalink, description);
+            submit(message, postPermalink, description, undefined, undefined, dueAt, channelID);
         }
 
         removeAssignee();
@@ -133,13 +149,13 @@ export default class AddIssue extends React.PureComponent {
     }
 
     render() {
-        const {assignee, visible, theme} = this.props;
+        const {assignee, visible, theme, showAssignee} = this.props;
 
         if (!visible) {
             return null;
         }
 
-        const {message, description, postPermalink} = this.state;
+        const {message, description, postPermalink, dueDate} = this.state;
         const style = getStyle(theme);
         const formattedMessage = message.includes(`[Permalink](${postPermalink})`) ? message : message + (postPermalink ? `\n[Permalink](${postPermalink})` : '');
 
@@ -197,27 +213,47 @@ export default class AddIssue extends React.PureComponent {
                         )}
 
                         <div style={style.chipsContainer}>
-                            {!assignee && (
+                            {showAssignee && (
+                                <React.Fragment>
+                                    {!assignee && (
+                                        <Chip
+                                            icon={<CompassIcon icon='account-outline'/>}
+                                            onClick={() => this.props.openAssigneeModal('')}
+                                        >
+                                            {'Assign to…'}
+                                        </Chip>
+                                    )}
+                                    {assignee && (
+                                        <button
+                                            style={style.assigneeContainer}
+                                            onClick={() => this.props.openAssigneeModal('')}
+                                        >
+                                            <img
+                                                style={style.assigneeImage}
+                                                src={getProfilePicture(assignee.id)}
+                                                alt={assignee.username}
+                                            />
+                                            <span>{assignee.username}</span>
+                                        </button>
+                                    )}
+                                </React.Fragment>
+                            )}
+                            <div style={style.dueContainer}>
                                 <Chip
-                                    icon={<CompassIcon icon='account-outline'/>}
-                                    onClick={() => this.props.openAssigneeModal('')}
+                                    icon={<CompassIcon icon='calendar-blank-outline'/>}
+                                    onClick={() => this.setState({showDuePicker: !this.state.showDuePicker})}
                                 >
-                                    {'Assign to…'}
+                                    {dueDate ? `Due: ${new Date(dueDate).toLocaleString()}` : 'Due date'}
                                 </Chip>
-                            )}
-                            {assignee && (
-                                <button
-                                    style={style.assigneeContainer}
-                                    onClick={() => this.props.openAssigneeModal('')}
-                                >
-                                    <img
-                                        style={style.assigneeImage}
-                                        src={getProfilePicture(assignee.id)}
-                                        alt={assignee.username}
+                                {this.state.showDuePicker && (
+                                    <input
+                                        type='datetime-local'
+                                        value={dueDate}
+                                        onChange={(e) => this.setState({dueDate: e.target.value})}
+                                        style={style.dueInput}
                                     />
-                                    <span>{assignee.username}</span>
-                                </button>
-                            )}
+                                )}
+                            </div>
                         </div>
 
                         <FullScreenModal
@@ -319,6 +355,21 @@ const getStyle = makeStyleFromTheme((theme) => {
         },
         chipsContainer: {
             marginTop: 8,
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+        },
+        dueContainer: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+        },
+        dueInput: {
+            border: `1px solid ${changeOpacity(theme.centerChannelColor, 0.16)}`,
+            borderRadius: 4,
+            padding: '4px 8px',
+            backgroundColor: theme.centerChannelBg,
+            color: theme.centerChannelColor,
         },
         textareaResizeMessage: {
             border: 0,

@@ -5,11 +5,11 @@ const imageURLForUser = (window).Components?.imageURLForUser;
 import Constants from './constants';
 
 export function canRemove(myList, foreignList) {
-    return myList === 'my' || myList === 'in' || foreignList === 'in';
+    return myList === 'my' || myList === 'in' || myList === 'channel' || myList === 'completed' || foreignList === 'in';
 }
 
 export function canComplete(myList) {
-    return myList === 'my' || myList === 'in';
+    return myList === 'my' || myList === 'in' || myList === 'channel';
 }
 
 export function canAccept(myList) {

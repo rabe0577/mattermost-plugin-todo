@@ -55,6 +55,22 @@ export default class SidebarButtons extends React.PureComponent {
         return (
             <div style={container}>
                 <OverlayTrigger
+                    key='myChannelTodosLink'
+                    placement={placement}
+                    overlay={<Tooltip id='myChannelTodosTooltip'>{'My Channel Todos'}</Tooltip>}
+                >
+                    <a
+                        style={button}
+                        onClick={() => {
+                            this.props.actions.telemetry('click_lhs_my_channel');
+                            this.openRHS(RHSStates.InListName);
+                        }}
+                    >
+                        <i className='icon icon-badge' />
+                        {' ' + inIssues.length }
+                    </a>
+                </OverlayTrigger>
+                <OverlayTrigger
                     key='myTodosLink'
                     placement={placement}
                     overlay={<Tooltip id='myTodosTooltip'>{'Your Todos'}</Tooltip>}

@@ -118,17 +118,17 @@ export const telemetry = (event, properties) => async (dispatch, getState) => {
     }));
 };
 
-export const add = (message, postPermalink, description, sendTo, postID) => async (dispatch, getState) => {
-    await fetch(getPluginServerRoute(getState()) + '/add', Client4.getOptions({
-        method: 'post',
-        body: JSON.stringify({send_to: sendTo, message, postPermalink, description, post_id: postID}),
-    }));
+export const add = (message, postPermalink, description, sendTo, postID, dueAt, channelID) => async (dispatch, getState) => {
+await fetch(getPluginServerRoute(getState()) + '/add', Client4.getOptions({
+method: 'post',
+body: JSON.stringify({send_to: sendTo, message, postPermalink, description, post_id: postID, due_at: dueAt, channel_id: channelID}),
+}));
 };
 
-export const editIssue = (postID, message, description) => async (dispatch, getState) => {
+export const editIssue = (postID, message, description, dueAt) => async (dispatch, getState) => {
     await fetch(getPluginServerRoute(getState()) + '/edit', Client4.getOptions({
         method: 'put',
-        body: JSON.stringify({id: postID, message, description}),
+        body: JSON.stringify({id: postID, message, description, due_at: dueAt}),
     }));
 };
 
@@ -139,14 +139,15 @@ export const changeAssignee = (id, assignee) => async (dispatch, getState) => {
     }));
 };
 
-export const fetchAllIssueLists = (reminder = false) => async (dispatch, getState) => {
-    let data;
-    try {
-        const resp = await fetch(getPluginServerRoute(getState()) + '/lists?reminder=' + reminder, Client4.getOptions({
-            method: 'get',
-        }));
-        data = await resp.json();
-    } catch (error) {
+export const fetchAllIssueLists = (reminder = false, channelID = '') => async (dispatch, getState) => {
+let data;
+try {
+const channelQuery = channelID ? `&channel_id=${channelID}` : '';
+const resp = await fetch(getPluginServerRoute(getState()) + '/lists?reminder=' + reminder + channelQuery, Client4.getOptions({
+method: 'get',
+}));
+data = await resp.json();
+} catch (error) {
         return {error};
     }
 
@@ -158,18 +159,18 @@ export const fetchAllIssueLists = (reminder = false) => async (dispatch, getStat
     return {data};
 };
 
-export const remove = (id) => async (dispatch, getState) => {
-    await fetch(getPluginServerRoute(getState()) + '/remove', Client4.getOptions({
-        method: 'post',
-        body: JSON.stringify({id}),
-    }));
+export const remove = (id, channelID = '') => async (dispatch, getState) => {
+await fetch(getPluginServerRoute(getState()) + '/remove', Client4.getOptions({
+method: 'post',
+body: JSON.stringify({id, channel_id: channelID}),
+}));
 };
 
-export const complete = (id) => async (dispatch, getState) => {
-    await fetch(getPluginServerRoute(getState()) + '/complete', Client4.getOptions({
-        method: 'post',
-        body: JSON.stringify({id}),
-    }));
+export const complete = (id, channelID = '') => async (dispatch, getState) => {
+await fetch(getPluginServerRoute(getState()) + '/complete', Client4.getOptions({
+method: 'post',
+body: JSON.stringify({id, channel_id: channelID}),
+}));
 };
 
 export const accept = (id) => async (dispatch, getState) => {

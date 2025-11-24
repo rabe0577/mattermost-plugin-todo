@@ -45,8 +45,9 @@ export function renderThumbVertical(props) {
         />);
 }
 
+const ChannelListName = 'channel';
 const MyListName = 'my';
-const OutListName = 'out';
+const CompletedListName = 'completed';
 const InListName = 'in';
 
 export default class SidebarRight extends React.PureComponent {
@@ -54,10 +55,14 @@ export default class SidebarRight extends React.PureComponent {
         myIssues: PropTypes.array.isRequired,
         inIssues: PropTypes.array.isRequired,
         outIssues: PropTypes.array.isRequired,
+        channelIssues: PropTypes.array.isRequired,
+        completedChannelIssues: PropTypes.array.isRequired,
         todoToast: PropTypes.object,
         theme: PropTypes.object.isRequired,
         siteURL: PropTypes.string.isRequired,
         rhsState: PropTypes.string,
+        channelID: PropTypes.string.isRequired,
+        currentUserID: PropTypes.string.isRequired,
         actions: PropTypes.shape({
             remove: PropTypes.func.isRequired,
             complete: PropTypes.func.isRequired,
@@ -76,7 +81,7 @@ export default class SidebarRight extends React.PureComponent {
         super(props);
 
         this.state = {
-            list: props.rhsState || MyListName,
+            list: props.rhsState || ChannelListName,
             showInbox: true,
             showMy: true,
             addTodo: false,
@@ -84,8 +89,13 @@ export default class SidebarRight extends React.PureComponent {
     }
 
     openList(listName) {
-        if (this.state.list !== listName) {
-            this.setState({list: listName});
+        let normalizedListName = listName;
+        if (![ChannelListName, MyListName, CompletedListName].includes(listName)) {
+            normalizedListName = ChannelListName;
+        }
+
+        if (this.state.list !== normalizedListName) {
+            this.setState({list: normalizedListName});
         }
     }
 
@@ -101,7 +111,7 @@ export default class SidebarRight extends React.PureComponent {
 
     componentDidMount() {
         document.addEventListener('keydown', this.handleKeypress);
-        this.props.actions.fetchAllIssueLists();
+        this.props.actions.fetchAllIssueLists(false, this.props.channelID);
         this.props.actions.setVisible(true);
     }
 
@@ -121,6 +131,10 @@ export default class SidebarRight extends React.PureComponent {
         if (prevProps.rhsState !== this.props.rhsState) {
             this.openList(this.props.rhsState);
         }
+
+        if (prevProps.channelID !== this.props.channelID) {
+            this.props.actions.fetchAllIssueLists(false, this.props.channelID);
+        }
     }
 
     addTodoItem() {
@@ -134,22 +148,28 @@ export default class SidebarRight extends React.PureComponent {
     render() {
         const style = getStyle();
         let todos = [];
-        let listHeading = 'My Todos';
+        let listHeading = 'Channel Todos';
         let addButton = '';
         let inboxList = [];
+        const isChannelScopedList = [ChannelListName, MyListName, CompletedListName].includes(this.state.list);
 
         switch (this.state.list) {
+        case CompletedListName:
+            todos = this.props.completedChannelIssues;
+            listHeading = 'Completed Todos';
+            break;
         case MyListName:
-            todos = this.props.myIssues;
-            addButton = 'Add Todo';
-            inboxList = this.props.inIssues;
+            todos = this.props.channelIssues.filter((issue) => issue.assignee_id === this.props.currentUserID);
+            listHeading = 'My Todos';
             break;
-        case OutListName:
-            todos = this.props.outIssues;
-            listHeading = 'Sent Todos';
-            addButton = 'Request a Todo from someone';
-            break;
+        case ChannelListName:
+        default:
+            todos = this.props.channelIssues;
+            listHeading = 'Channel Todos';
         }
+
+        addButton = 'Add Todo';
+        inboxList = this.props.inIssues;
 
         let inbox;
 
@@ -174,16 +194,17 @@ export default class SidebarRight extends React.PureComponent {
                         {actionName}
                         <div>{`Incoming Todos (${inboxList.length})`}</div>
                     </div>
-                    {this.state.showInbox ?
-                        <ToDoIssues
-                            issues={inboxList}
-                            theme={this.props.theme}
-                            list={InListName}
-                            remove={this.props.actions.remove}
-                            complete={this.props.actions.complete}
-                            accept={this.props.actions.accept}
-                            bump={this.props.actions.bump}
-                        /> : ''}
+                        {this.state.showInbox ?
+                            <ToDoIssues
+                                issues={inboxList}
+                                theme={this.props.theme}
+                                list={InListName}
+                                remove={this.props.actions.remove}
+                                complete={this.props.actions.complete}
+                                accept={this.props.actions.accept}
+                                bump={this.props.actions.bump}
+                                showAssignee={false}
+                            /> : ''}
                 </div>
             );
         }
@@ -236,17 +257,23 @@ export default class SidebarRight extends React.PureComponent {
                             </button>
                             <Menu position='right'>
                                 <MenuItem
+                                    onClick={() => this.openList(ChannelListName)}
+                                    action={() => this.openList(ChannelListName)}
+                                    text={'Channel Todos'}
+                                />
+                                <MenuItem
                                     onClick={() => this.openList(MyListName)}
                                     action={() => this.openList(MyListName)}
                                     text={'My Todos'}
                                 />
                                 <MenuItem
-                                    action={() => this.openList(OutListName)}
-                                    text={'Sent Todos'}
+                                    onClick={() => this.openList(CompletedListName)}
+                                    action={() => this.openList(CompletedListName)}
+                                    text={'Completed Todos'}
                                 />
                             </Menu>
                         </MenuWrapper>
-                        {this.state.list === MyListName && (
+                        {[ChannelListName, MyListName].includes(this.state.list) && (
                             <OverlayTrigger
                                 id='addOverlay'
                                 placement={'bottom'}
@@ -285,17 +312,21 @@ export default class SidebarRight extends React.PureComponent {
                         <AddIssue
                             theme={this.props.theme}
                             closeAddBox={this.closeAddBox}
+                            showAssignee={isChannelScopedList}
+                            listType={this.state.list}
+                            channelID={this.props.channelID}
                         />
                         {(inboxList.length === 0) || (this.state.showMy && todos.length > 0) ?
                             <ToDoIssues
                                 issues={todos}
                                 theme={this.props.theme}
                                 list={this.state.list}
-                                remove={this.props.actions.remove}
-                                complete={this.props.actions.complete}
+                                remove={(id) => this.props.actions.remove(id, [ChannelListName, MyListName, CompletedListName].includes(this.state.list) ? this.props.channelID : '')}
+                                complete={(id) => this.props.actions.complete(id, [ChannelListName, MyListName].includes(this.state.list) ? this.props.channelID : '')}
                                 accept={this.props.actions.accept}
                                 bump={this.props.actions.bump}
                                 siteURL={this.props.siteURL}
+                                showAssignee={isChannelScopedList}
                             /> : ''}
                     </div>
                     {this.props.todoToast && (
